@@ -47,73 +47,79 @@ resource "aws_instance" "web" {
   instance_type          = "t3.nano"
   vpc_security_group_ids = [aws_security_group.tomcat_sg.id]
 
+  # Enforce secure IMDSv2 configurations
+  metadata_options {
+    http_endpoint               = "enabled"
+    http_tokens                 = "required" # Mandates IMDSv2
+    http_put_response_hop_limit = 1
+  }
+
   # Configure this as a Spot Instance
   instance_market_options {
     market_type = "spot"
     spot_options {
-      max_price          = "0.01" # Adjust maximum hourly price if needed
       spot_instance_type = "one-time"
+      # Omitting max_price defaults to the standard on-demand price ceiling for stability
     }
   }
 
   # Script to install Java and Tomcat 10 automatically
   user_data = <<-EOF
               #!/bin/bash
-set -e
+              set -e
 
-# Install dependencies
-yum update -y
-yum install -y wget
+              # Install dependencies
+              yum update -y
+              yum install -y wget
 
-# Install Java 11
-amazon-linux-extras install java-openjdk11 -y
+              # Install Java 11
+              amazon-linux-extras install java-openjdk11 -y
+              
+              # Automatically detect correct JAVA_HOME path
+              DETECTED_JAVA_HOME=$(dirname $(dirname $(readlink -f $(which java))))
 
-# Create Tomcat user
-useradd -m -U -d /opt/tomcat -s /bin/false tomcat
+              # Create Tomcat user
+              useradd -m -U -d /opt/tomcat -s /bin/false tomcat
 
-# Download Tomcat (CORRECT URL)
-cd /tmp
-wget https://downloads.apache.org/tomcat/tomcat-10/v10.1.18/bin/apache-tomcat-10.1.18.tar.gz
+              # Download Tomcat from the Official Archive Server
+              cd /tmp
+              wget https://apache.org
 
-# Extract
-mkdir -p /opt/tomcat
-tar -xzf apache-tomcat-10.1.18.tar.gz -C /opt/tomcat --strip-components=1
+              # Extract
+              mkdir -p /opt/tomcat
+              tar -xzf apache-tomcat-10.1.18.tar.gz -C /opt/tomcat --strip-components=1
 
-# Permissions
-chown -R tomcat:tomcat /opt/tomcat
-chmod -R 755 /opt/tomcat
+              # Permissions
+              chown -R tomcat:tomcat /opt/tomcat
+              chmod -R 755 /opt/tomcat
 
-# Systemd service
-cat << 'SYSTEMD' > /etc/systemd/system/tomcat.service
-[Unit]
-Description=Apache Tomcat
-After=network.target
+              # Systemd service (Using the dynamically detected Java path)
+              cat << SYSTEMD > /etc/systemd/system/tomcat.service
+              [Unit]
+              Description=Apache Tomcat
+              After=network.target
 
-[Service]
-Type=forking
+              [Service]
+              Type=forking
+              User=tomcat
+              Group=tomcat
+              Environment="JAVA_HOME=$DETECTED_JAVA_HOME"
+              Environment="CATALINA_HOME=/opt/tomcat"
+              Environment="CATALINA_BASE=/opt/tomcat"
+              Environment="CATALINA_PID=/opt/tomcat/temp/tomcat.pid"
+              ExecStart=/opt/tomcat/bin/startup.sh
+              ExecStop=/opt/tomcat/bin/shutdown.sh
+              Restart=on-failure
 
-User=tomcat
-Group=tomcat
+              [Install]
+              WantedBy=multi-user.target
+              SYSTEMD
 
-Environment="JAVA_HOME=/usr/lib/jvm/java-11-amazon-corretto.x86_64"
-Environment="CATALINA_HOME=/opt/tomcat"
-Environment="CATALINA_BASE=/opt/tomcat"
-Environment="CATALINA_PID=/opt/tomcat/temp/tomcat.pid"
-
-ExecStart=/opt/tomcat/bin/startup.sh
-ExecStop=/opt/tomcat/bin/shutdown.sh
-
-Restart=on-failure
-
-[Install]
-WantedBy=multi-user.target
-SYSTEMD
-
-# Start service
-systemctl daemon-reload
-systemctl enable tomcat
-systemctl start tomcat
-EOF
+              # Start service
+              systemctl daemon-reload
+              systemctl enable tomcat
+              systemctl start tomcat
+              EOF
 
   tags = {
     Name = "Tomcat-Spot-Server"
