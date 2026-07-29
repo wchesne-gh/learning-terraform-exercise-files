@@ -1,16 +1,4 @@
-
-terraform {
-  required_version = ">= 1.6.0"
-
-  required_providers {
-    aws = {
-      source  = "hashicorp/aws"
-      version = "~> 5.0"
-    }
-  }
-}
-
-data "aws_ami" "amzn2023" {
+data "aws_ami" "al2023" {
   most_recent = true
   owners      = ["amazon"]
 
@@ -22,19 +10,20 @@ data "aws_ami" "amzn2023" {
 
 resource "aws_security_group" "tomcat_sg" {
   name        = "tomcat-spot-sg"
-  description = "Allow SSH and Tomcat"
+  description = "Allow SSH and Tomcat access"
+
   ingress {
     from_port   = 22
     to_port     = 22
     protocol    = "tcp"
-    cidr_blocks = ["YOUR_PUBLIC_IP/32"]
+    cidr_blocks = [var.my_ip_cidr]
   }
 
   ingress {
     from_port   = 8080
     to_port     = 8080
     protocol    = "tcp"
-    cidr_blocks = ["YOUR_PUBLIC_IP/32"]
+    cidr_blocks = [var.my_ip_cidr]
   }
 
   egress {
@@ -43,37 +32,47 @@ resource "aws_security_group" "tomcat_sg" {
     protocol    = "-1"
     cidr_blocks = ["0.0.0.0/0"]
   }
+
+  tags = {
+    Name = "tomcat-spot-sg"
+  }
 }
 
 resource "aws_instance" "tomcat_spot" {
-  ami                    = data.aws_ami.amzn2023.id
-  instance_type          = "t3.small"
-  subnet_id              = "subnet-xxxxxxxx"
+  ami                    = data.aws_ami.al2023.id
+  instance_type          = var.instance_type
+  subnet_id              = var.subnet_id
   vpc_security_group_ids = [aws_security_group.tomcat_sg.id]
-  key_name               = "your-keypair"
+  key_name               = var.key_name
 
   instance_market_options {
     market_type = "spot"
+
     spot_options {
-      spot_instance_type = "one-time"
-      instance_interruption_behavior = "terminate"
+      spot_instance_type             = "one-time"
+      instance_interruption_behavior  = "terminate"
     }
   }
 
   user_data = <<-EOF
               #!/bin/bash
-              set -euxo pipefail
+              set -euo pipefail
 
               dnf update -y
               dnf install -y java-17-amazon-corretto wget tar
 
-              useradd -r -m -U -d /opt/tomcat -s /sbin/nologin tomcat || true
+              id tomcat &>/dev/null || useradd -r -m -U -d /opt/tomcat -s /sbin/nologin tomcat
 
               TOMCAT_VERSION=10.1.24
+              TOMCAT_MAJOR=10
+              TOMCAT_URL="https://archive.apache.org/dist/tomcat/tomcat-${TOMCAT_MAJOR}/v${TOMCAT_VERSION}/bin/apache-tomcat-${TOMCAT_VERSION}.tar.gz"
+
               cd /tmp
-              wget https://archive.apache.org/dist/tomcat/tomcat-10/v10.1.56/bin/apache-tomcat-10.1.56.tar.gz
+              curl -fL --retry 5 --retry-delay 2 -o apache-tomcat-${TOMCAT_VERSION}.tar.gz "$TOMCAT_URL"
+
+              rm -rf /opt/tomcat
               mkdir -p /opt/tomcat
-              tar xzf apache-tomcat-10.1.56.tar.gz-C /opt/tomcat --strip-components=1
+              tar xzf /tmp/apache-tomcat-${TOMCAT_VERSION}.tar.gz -C /opt/tomcat --strip-components=1
               chown -R tomcat:tomcat /opt/tomcat
 
               cat >/etc/systemd/system/tomcat.service <<'UNIT'
@@ -85,9 +84,9 @@ resource "aws_instance" "tomcat_spot" {
               Type=forking
               User=tomcat
               Group=tomcat
-              Environment=JAVA_HOME=/usr/lib/jvm/java-17-amazon-corretto
-              Environment=CATALINA_HOME=/opt/tomcat
-              Environment=CATALINA_BASE=/opt/tomcat
+              Environment="JAVA_HOME=/usr/lib/jvm/java-17-amazon-corretto"
+              Environment="CATALINA_HOME=/opt/tomcat"
+              Environment="CATALINA_BASE=/opt/tomcat"
               ExecStart=/opt/tomcat/bin/startup.sh
               ExecStop=/opt/tomcat/bin/shutdown.sh
               Restart=on-failure
