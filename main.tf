@@ -38,28 +38,21 @@ resource "aws_security_group" "tomcat_sg" {
   }
 }
 
-resource "aws_instance" "tomcat_spot" {
+resource "aws_spot_instance_request" "tomcat_spot" {
   ami                    = data.aws_ami.al2023.id
   instance_type          = var.instance_type
   subnet_id              = var.subnet_id
   vpc_security_group_ids = [aws_security_group.tomcat_sg.id]
   key_name               = var.key_name
 
-  instance_market_options {
-    market_type = "spot"
-
-    spot_options {
-      spot_instance_type             = "one-time"
-      instance_interruption_behavior  = "terminate"
-    }
-  }
+  spot_type = "one-time"
 
   user_data = <<-EOF
               #!/bin/bash
               set -euo pipefail
 
               dnf update -y
-              dnf install -y java-17-amazon-corretto wget tar
+              dnf install -y java-17-amazon-corretto curl tar
 
               id tomcat &>/dev/null || useradd -r -m -U -d /opt/tomcat -s /sbin/nologin tomcat
 
