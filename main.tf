@@ -1,18 +1,4 @@
-terraform {
-  required_providers {
-    aws = {
-      source  = "hashicorp/aws"
-      version = "~> 5.0"
-    }
-  }
-}
-
-# 1. Configure the AWS Provider for us-east-2
-provider "aws" {
-  region = "us-east-2"
-}
-
-# 2. Security Group to allow SSH and Tomcat web traffic
+# 1. Security Group to allow SSH and Tomcat web traffic
 resource "aws_security_group" "tomcat_sg" {
   name        = "tomcat-security-group"
   description = "Allow SSH and Tomcat web traffic"
@@ -39,7 +25,7 @@ resource "aws_security_group" "tomcat_sg" {
   }
 }
 
-# 3. EC2 Spot Instance using pre-configured Tomcat 11 AMI
+# 2. EC2 Spot Instance using pre-configured Tomcat 11 AMI
 resource "aws_instance" "web" {
   ami                    = "ami-02cab4f0ea4dc8a19"
   instance_type          = "t3.micro"
@@ -59,7 +45,7 @@ resource "aws_instance" "web" {
   }
 }
 
-# 4. Output the public URL to access Tomcat
+# 3. Output the public URL to access Tomcat
 output "tomcat_url" {
   value       = "http://${aws_instance.web.public_ip}:8080"
   description = "The public URL of the Tomcat server"
