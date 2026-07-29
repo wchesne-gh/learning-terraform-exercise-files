@@ -59,55 +59,61 @@ resource "aws_instance" "web" {
   # Script to install Java and Tomcat 10 automatically
   user_data = <<-EOF
               #!/bin/bash
-              # Update packages and install Java 11 (required for Tomcat 10)
-              yum update -y
-              amazon-linux-extras install java-openjdk11 -y
+set -e
 
-              # Create Tomcat user and directories
-              useradd -m -U -d /opt/tomcat -s /bin/false tomcat
-              
-              # Download Tomcat 10
-              cd /tmp
-              wget https://apache.org
-              
-              # Extract and set permissions
-              tar -xf apache-tomcat-10.1.18.tar.gz -C /opt/tomcat --strip-components=1
-              chown -R tomcat:tomcat /opt/tomcat
-              chmod -R g+r /opt/tomcat/conf
-              chmod g+x /opt/tomcat/conf
-              chown -R tomcat /opt/tomcat/webapps/ /opt/tomcat/work/ /opt/tomcat/temp/ /opt/tomcat/logs/
+# Install dependencies
+yum update -y
+yum install -y wget
 
-              # Create Systemd Service File to manage Tomcat lifecycle
-              cat << 'SYSTEMD' > /etc/systemd/system/tomcat.service
-              [Unit]
-              Description=Apache Tomcat Web Application Container
-              After=network.target
+# Install Java 11
+amazon-linux-extras install java-openjdk11 -y
 
-              [Service]
-              Type=forking
+# Create Tomcat user
+useradd -m -U -d /opt/tomcat -s /bin/false tomcat
 
-              User=tomcat
-              Group=tomcat
+# Download Tomcat (CORRECT URL)
+cd /tmp
+wget https://downloads.apache.org/tomcat/tomcat-10/v10.1.18/bin/apache-tomcat-10.1.18.tar.gz
 
-              Environment="JAVA_HOME=/usr/lib/jvm/jre"
-              Environment="CATALINA_PID=/opt/tomcat/temp/tomcat.pid"
-              Environment="CATALINA_HOME=/opt/tomcat"
-              Environment="CATALINA_BASE=/opt/tomcat"
+# Extract
+mkdir -p /opt/tomcat
+tar -xzf apache-tomcat-10.1.18.tar.gz -C /opt/tomcat --strip-components=1
 
-              ExecStart=/opt/tomcat/bin/startup.sh
-              ExecStop=/opt/tomcat/bin/shutdown.sh
+# Permissions
+chown -R tomcat:tomcat /opt/tomcat
+chmod -R 755 /opt/tomcat
 
-              Restart=on-failure
+# Systemd service
+cat << 'SYSTEMD' > /etc/systemd/system/tomcat.service
+[Unit]
+Description=Apache Tomcat
+After=network.target
 
-              [Install]
-              WantedBy=multi-user.target
-              SYSTEMD
+[Service]
+Type=forking
 
-              # Reload systemd, start Tomcat, and enable it on boot
-              systemctl daemon-reload
-              systemctl start tomcat
-              systemctl enable tomcat
-              EOF
+User=tomcat
+Group=tomcat
+
+Environment="JAVA_HOME=/usr/lib/jvm/java-11-amazon-corretto.x86_64"
+Environment="CATALINA_HOME=/opt/tomcat"
+Environment="CATALINA_BASE=/opt/tomcat"
+Environment="CATALINA_PID=/opt/tomcat/temp/tomcat.pid"
+
+ExecStart=/opt/tomcat/bin/startup.sh
+ExecStop=/opt/tomcat/bin/shutdown.sh
+
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
+SYSTEMD
+
+# Start service
+systemctl daemon-reload
+systemctl enable tomcat
+systemctl start tomcat
+EOF
 
   tags = {
     Name = "Tomcat-Spot-Server"
