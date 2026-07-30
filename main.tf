@@ -1,9 +1,17 @@
-user_data = <<-EOF
+resource "aws_spot_instance_request" "tomcat_spot" {
+  ami           = data.aws_ami.al2023.id
+  instance_type = var.instance_type
+  subnet_id     = var.subnet_id
+  vpc_security_group_ids = [aws_security_group.tomcat_sg.id]
+  iam_instance_profile   = aws_iam_instance_profile.ec2_ssm_profile.name
+  spot_type              = "one-time"
+
+  user_data = <<-EOF
 #!/bin/bash
 set -euo pipefail
 
 dnf update -y
-dnf install -y java-17-amazon-corretto curl tar
+dnf install -y java-17-amazon-corretto
 
 id tomcat &>/dev/null || useradd -r -m -U -d /opt/tomcat -s /sbin/nologin tomcat
 
@@ -18,29 +26,9 @@ rm -rf /opt/tomcat
 mkdir -p /opt/tomcat
 tar xzf /tmp/apache-tomcat-$${TOMCAT_VERSION}.tar.gz -C /opt/tomcat --strip-components=1
 chown -R tomcat:tomcat /opt/tomcat
-
-cat >/etc/systemd/system/tomcat.service <<'UNIT'
-[Unit]
-Description=Apache Tomcat
-After=network.target
-
-[Service]
-Type=forking
-User=tomcat
-Group=tomcat
-Environment="JAVA_HOME=/usr/lib/jvm/java-17-amazon-corretto"
-Environment="CATALINA_HOME=/opt/tomcat"
-Environment="CATALINA_BASE=/opt/tomcat"
-ExecStart=/opt/tomcat/bin/startup.sh
-ExecStop=/opt/tomcat/bin/shutdown.sh
-Restart=on-failure
-
-[Install]
-WantedBy=multi-user.target
-UNIT
-
-chmod +x /opt/tomcat/bin/*.sh
-systemctl daemon-reload
-systemctl enable tomcat
-systemctl start tomcat
 EOF
+
+  tags = {
+    Name = "tomcat-spot"
+  }
+}
