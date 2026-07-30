@@ -75,6 +75,13 @@ resource "aws_security_group" "tomcat_sg" {
     cidr_blocks = [var.my_ip_cidr]
   }
 
+  ingress {
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }  
+  
   egress {
     from_port   = 0
     to_port     = 0
@@ -98,49 +105,70 @@ resource "aws_spot_instance_request" "tomcat_spot" {
 
   user_data = <<-EOF
 #!/bin/bash
-set -euo pipefail
+# Send script output to log files for easy debugging if it fails
+exec > >(tee /var/log/user-data.log|logger -t user-data -s 2>/dev/null) 2>&1
 
-dnf update -y
-dnf install -y java-17-amazon-corretto
+set -e # Exit immediately if any command fails
 
-id tomcat &>/dev/null || useradd -r -m -U -d /opt/tomcat -s /sbin/nologin tomcat
+# 1. Update OS and detect system version to install Java
+if grep -q "release 2023" /etc/system-release; then
+    echo "Detected Amazon Linux 2023"
+    dnf update -y
+    dnf install java-17-amazon-corretto-devel wget -y
+else
+    echo "Detected Amazon Linux 2"
+    yum update -y
+    amazon-linux-extras install java-openjdk11 -y
+    yum install wget -y
+fi
 
-TOMCAT_VERSION=${var.tomcat_version}
-TOMCAT_MAJOR=${var.tomcat_major}
-TOMCAT_URL="https://archive.apache.org/dist/tomcat/tomcat-$${TOMCAT_MAJOR}/v$${TOMCAT_VERSION}/bin/apache-tomcat-$${TOMCAT_VERSION}.tar.gz"
+# 2. Create a restricted system user for Tomcat
+groupadd tomcat
+useradd -s /bin/false -g tomcat -d /opt/tomcat tomcat
 
+# 3. Download and extract Tomcat 10 from the official archive mirror
 cd /tmp
-curl -fL --retry 5 --retry-delay 2 -o apache-tomcat-$${TOMCAT_VERSION}.tar.gz "$TOMCAT_URL"
+wget https://apache.org
 
-rm -rf /opt/tomcat
 mkdir -p /opt/tomcat
-tar xzf /tmp/apache-tomcat-$${TOMCAT_VERSION}.tar.gz -C /opt/tomcat --strip-components=1
-chown -R tomcat:tomcat /opt/tomcat
+tar -xzf apache-tomcat-10.1.18.tar.gz -C /opt/tomcat --strip-components=1
 
-cat >/etc/systemd/system/tomcat.service <<'UNIT'
+# 4. Set secure folder permissions
+chown -R tomcat:tomcat /opt/tomcat
+chmod -R 755 /opt/tomcat
+
+# 5. Dynamically calculate the accurate system path for JAVA_HOME
+DETECTED_JAVA_HOME=$(dirname $(dirname $(readlink -f $(which java))))
+
+# 6. Create the Systemd service configuration
+cat << SYSTEMD > /etc/systemd/system/tomcat.service
 [Unit]
-Description=Apache Tomcat
+Description=Apache Tomcat Server
 After=network.target
 
 [Service]
 Type=forking
 User=tomcat
 Group=tomcat
-Environment="JAVA_HOME=/usr/lib/jvm/java-17-amazon-corretto"
+Environment="JAVA_HOME=$DETECTED_JAVA_HOME"
 Environment="CATALINA_HOME=/opt/tomcat"
 Environment="CATALINA_BASE=/opt/tomcat"
+Environment="CATALINA_PID=/opt/tomcat/temp/tomcat.pid"
 ExecStart=/opt/tomcat/bin/startup.sh
 ExecStop=/opt/tomcat/bin/shutdown.sh
 Restart=on-failure
 
 [Install]
 WantedBy=multi-user.target
-UNIT
+SYSTEMD
 
-chmod +x /opt/tomcat/bin/*.sh
+# 7. Reload systemd daemons, enable boot persistent execution, and start Tomcat
 systemctl daemon-reload
 systemctl enable tomcat
 systemctl start tomcat
+
+echo "Tomcat setup execution finished successfully!"
+
 EOF
 
   tags = {
