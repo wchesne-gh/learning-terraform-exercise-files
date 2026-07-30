@@ -128,10 +128,9 @@ useradd -s /bin/false -g tomcat -d /opt/tomcat tomcat
 
 # 3. Download and extract Tomcat 10 from the official archive mirror
 cd /tmp
-wget https://apache.org
-
+wget https://archive.apache.org/dist/tomcat/tomcat-10/v10.1.56/bin/apache-tomcat-10.1.56.tar.gz
 mkdir -p /opt/tomcat
-tar -xzf apache-tomcat-10.1.18.tar.gz -C /opt/tomcat --strip-components=1
+tar -xzf apache-tomcat-10.1.56.tar.gz -C /opt/tomcat --strip-components=1
 
 # 4. Set secure folder permissions
 chown -R tomcat:tomcat /opt/tomcat
