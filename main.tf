@@ -44,7 +44,7 @@ variable "tomcat_major" {
      #principals {
        #type        = "Service"
       identifiers = ["ec2.amazonaws.com"]
-    }
+     #}
 
     actions = ["sts:AssumeRole"]
   }
