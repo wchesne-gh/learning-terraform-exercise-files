@@ -35,7 +35,7 @@ variable "tomcat_major" {
     #name   = "name"
  #  #values = ["al2023-ami-*-x86_64"]
 #  }
-}
+ #}
 
  #data "aws_iam_policy_document" "ec2_assume_role" {
    #statement {
