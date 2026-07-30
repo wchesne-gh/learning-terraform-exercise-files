@@ -107,7 +107,7 @@ resource "aws_spot_instance_request" "tomcat_spot" {
               set -euo pipefail
 
               dnf update -y
-              dnf install -y java-17-amazon-corretto curl tar
+              dnf install -y java-17-amazon-corretto
 
               id tomcat &>/dev/null || useradd -r -m -U -d /opt/tomcat -s /sbin/nologin tomcat
 
