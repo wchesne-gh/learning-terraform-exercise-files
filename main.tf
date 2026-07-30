@@ -106,14 +106,9 @@ resource "aws_spot_instance_request" "tomcat_spot" {
 
               TOMCAT_VERSION=${var.tomcat_version}
               TOMCAT_MAJOR=${var.tomcat_major}
-              TOMCAT_URL="https://archive.apache.org/dist/tomcat/tomcat-${TOMCAT_MAJOR}/v${TOMCAT_VERSION}/bin/apache-tomcat-${TOMCAT_VERSION}.tar.gz"
-
-              cd /tmp
-              curl -fL --retry 5 --retry-delay 2 -o apache-tomcat-${TOMCAT_VERSION}.tar.gz "$TOMCAT_URL"
-
-              rm -rf /opt/tomcat
-              mkdir -p /opt/tomcat
-              tar xzf /tmp/apache-tomcat-${TOMCAT_VERSION}.tar.gz -C /opt/tomcat --strip-components=1
+              TOMCAT_URL="https://archive.apache.org/dist/tomcat/tomcat-$${TOMCAT_MAJOR}/v$${TOMCAT_VERSION}/bin/apache-tomcat-$${TOMCAT_VERSION}.tar.gz"
+              curl -fL --retry 5 --retry-delay 2 -o apache-tomcat-$${TOMCAT_VERSION}.tar.gz "$$TOMCAT_URL"
+              tar xzf /tmp/apache-tomcat-$${TOMCAT_VERSION}.tar.gz -C /opt/tomcat --strip-components=1
               chown -R tomcat:tomcat /opt/tomcat
 
               cat >/etc/systemd/system/tomcat.service <<'UNIT'
