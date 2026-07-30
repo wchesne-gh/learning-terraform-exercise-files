@@ -1,5 +1,5 @@
 instance_type  = "t3.micro"
-subnet_id      = "subnet-xxxxxxxx"
+subnet_id      = "subnet-0bd7e924e713c2a50"
 my_ip_cidr     = "162.120.186.143/32"
 tomcat_version = "10.1.24"
 tomcat_major   = "10"
